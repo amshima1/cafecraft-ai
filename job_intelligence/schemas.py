@@ -37,7 +37,12 @@ def validate_job_matching(payload: Any) -> JobMatchingResult:
 
 def validate_ats_analysis(payload: Any) -> ATSAnalysisResult:
     data = _payload(payload)
-    values = _fields(data, ATSAnalysisResult.__dataclass_fields__ - {"ats_score_statement"})
+    field_names = (
+        name
+        for name in ATSAnalysisResult.__dataclass_fields__
+        if name != "ats_score_statement"
+    )
+    values = _fields(data, field_names)
     statement = data.get("ats_score_statement")
     if statement != "No exact ATS score is predicted.":
         raise ValidationError("ats_score_statement must state that no exact ATS score is predicted.")
