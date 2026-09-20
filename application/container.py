@@ -33,17 +33,29 @@ class ApplicationContainer:
         documents: DocumentService | None = None,
         storage: StorageService[object] | None = None,
     ) -> None:
-        self._career_profiles = career_profiles or CareerProfileService(
-            InMemoryCareerProfileRepository()
+        self._career_profiles = (
+            career_profiles
+            if career_profiles is not None
+            else CareerProfileService(InMemoryCareerProfileRepository())
         )
-        self._resumes = resumes or ResumeService()
-        self._jobs = jobs
-        self._applications = applications or ApplicationWorkspaceService()
-        self._interviews = interviews or InterviewIntelligenceService()
-        self._truth = truth or TruthLayerService()
-        self._privacy = privacy or PrivacyService()
-        self._documents = documents or DocumentService()
-        self._storage = storage or StorageService[object]()
+        self._resumes = resumes if resumes is not None else ResumeService()
+        self._jobs = jobs if jobs is not None else None
+        self._applications = (
+            applications
+            if applications is not None
+            else ApplicationWorkspaceService()
+        )
+        self._interviews = (
+            interviews
+            if interviews is not None
+            else InterviewIntelligenceService()
+        )
+        self._truth = truth if truth is not None else TruthLayerService()
+        self._privacy = privacy if privacy is not None else PrivacyService()
+        self._documents = documents if documents is not None else DocumentService()
+        self._storage = (
+            storage if storage is not None else StorageService[object]()
+        )
 
     @property
     def career_profiles(self) -> CareerProfileService:

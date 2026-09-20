@@ -17,6 +17,13 @@ from storage import StorageService
 from truth_layer import Evidence, TruthLayerService
 
 
+class FalsyResumeService(ResumeService):
+    """A valid injected service whose truth value is deliberately false."""
+
+    def __bool__(self) -> bool:
+        return False
+
+
 class ApplicationCompositionTests(unittest.TestCase):
     def test_default_container_constructs_without_ai_configuration(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
@@ -50,6 +57,11 @@ class ApplicationCompositionTests(unittest.TestCase):
         for name, service in services.items():
             with self.subTest(name=name):
                 self.assertIs(getattr(container, name), service)
+
+    def test_falsy_injected_service_is_preserved_by_identity(self) -> None:
+        service = FalsyResumeService()
+        self.assertFalse(service)
+        self.assertIs(ApplicationContainer(resumes=service).resumes, service)
 
     def test_explicit_job_service_is_preserved(self) -> None:
         from job_intelligence import JobIntelligenceService
