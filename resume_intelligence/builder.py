@@ -20,8 +20,8 @@ class ResumeBuilder:
         sections = [
             ResumeSection(
                 name="Summary",
-                entries=(ResumeEntry(title="Professional Summary", content=profile.professional_summary or ""),),
-            ),
+                entries=(ResumeEntry(title="Professional Summary", content=profile.professional_summary),),
+            ) if profile.professional_summary else None,
             ResumeSection(
                 name="Experience",
                 entries=tuple(
@@ -87,7 +87,7 @@ class ResumeBuilder:
         ]
 
         # Remove empty optional sections while preserving order.
-        valid_sections = tuple(section for section in sections if section.entries)
+        valid_sections = tuple(section for section in sections if section and section.entries)
         return Resume(
             resume_id=f"resume-{profile.profile_id}",
             full_name=profile.full_name,

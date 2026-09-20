@@ -18,6 +18,10 @@ class ResumeVersionManager:
     def create_version(self, resume: Resume, *, version_id: str | None = None, version_number: int | None = None) -> ResumeVersion:
         if not isinstance(resume, Resume):
             raise ValidationError("resume must be a Resume instance.")
+        if version_number is not None and (
+            not isinstance(version_number, int) or version_number <= 0
+        ):
+            raise ValidationError("version_number must be a positive integer.")
 
         now = datetime.utcnow()
         version_bucket = self._versions.setdefault(resume.resume_id, {})
