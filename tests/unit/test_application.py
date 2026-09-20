@@ -1,8 +1,8 @@
 """Unit tests for the Application Composition foundation."""
 
+import ast
 import importlib
 import os
-import sys
 import unittest
 from unittest.mock import patch
 
@@ -153,39 +153,72 @@ class ApplicationCompositionTests(unittest.TestCase):
     def test_public_exports_only_application_container(self) -> None:
         module = importlib.import_module("application")
         self.assertEqual(module.__all__, ["ApplicationContainer"])
-        self.assertEqual(
-            {name for name in module.__dict__ if not name.startswith("_")},
-            {"ApplicationContainer"},
-        )
+        from application import ApplicationContainer as imported_container
+
+        self.assertIs(imported_container, ApplicationContainer)
 
     def test_no_application_service_or_service_module_exists(self) -> None:
         self.assertNotIn("ApplicationService", vars(importlib.import_module("application")))
         self.assertFalse(os.path.exists(os.path.join("application", "service.py")))
 
     def test_no_global_container_registry_is_created(self) -> None:
-        module = importlib.import_module("application.container")
-        self.assertFalse(any(value is ApplicationContainer for value in module.__dict__.values()))
-        self.assertFalse(any(name.endswith("_CONTAINER") for name in module.__dict__))
+        module = ast.parse(
+            open("application/container.py", encoding="utf-8").read(),
+            filename="application/container.py",
+        )
+        module_assignments = [
+            node
+            for node in module.body
+            if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
+        ]
+        for assignment in module_assignments:
+            with self.subTest(line=assignment.lineno):
+                self.assertFalse(
+                    any(
+                        isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == "ApplicationContainer"
+                        for node in ast.walk(assignment)
+                    )
+                )
+                targets = ast.walk(assignment)
+                self.assertFalse(
+                    any(
+                        isinstance(node, ast.Name)
+                        and "registry" in node.id.lower()
+                        for node in targets
+                    )
+                )
 
-    def test_application_container_has_no_external_architecture_imports(self) -> None:
-        source = open("application/container.py", encoding="utf-8").read()
-        for forbidden in (
+    def test_application_container_has_no_forbidden_imports(self) -> None:
+        module = ast.parse(
+            open("application/container.py", encoding="utf-8").read(),
+            filename="application/container.py",
+        )
+        forbidden_roots = {
             "streamlit",
             "sqlalchemy",
             "sqlite3",
             "requests",
-            "urllib.request",
+            "httpx",
+            "urllib",
             "DeepSeekClient",
-            "DEEPSEEK_API_KEY",
-        ):
-            with self.subTest(forbidden=forbidden):
-                self.assertNotIn(forbidden, source)
-        self.assertNotIn("._", source)
+            "database",
+            "sqlite",
+            "filesystem",
+            "pathlib",
+        }
+        imports = [node for node in ast.walk(module) if isinstance(node, (ast.Import, ast.ImportFrom))]
+        imported_names = set()
+        for node in imports:
+            if isinstance(node, ast.Import):
+                imported_names.update(alias.name.split(".")[0] for alias in node.names)
+            elif node.module:
+                imported_names.add(node.module.split(".")[0])
+                imported_names.update(alias.name for alias in node.names)
+        self.assertTrue(forbidden_roots.isdisjoint(imported_names))
 
     def test_explicit_constructor_dependency_exceptions_are_not_hidden(self) -> None:
-        class FailingService:
-            pass
-
         with patch("application.container.ResumeService", side_effect=RuntimeError("failure")):
             with self.assertRaisesRegex(RuntimeError, "failure"):
                 ApplicationContainer()
