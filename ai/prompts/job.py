@@ -136,9 +136,8 @@ Task:
 Identify relevant keywords and phrases from the job description, show whether
 and where they are explicitly represented in the resume, and explain potential
 alignment or discoverability issues such as unclear wording, missing keywords,
-or formatting that may reduce machine-readable clarity. This is a qualitative
-analysis only. Do not provide an exact ATS score, claim to calculate one, or
-predict an ATS decision. Do not recommend adding a keyword as though the
+or formatting that may reduce machine-readable clarity. This is a qualitative analysis only. Do not provide an exact ATS score, claim
+to calculate one, or predict an ATS decision. Do not recommend adding a keyword as though the
 candidate possesses that skill; flag it for verification when the resume does
 not support it.
 
