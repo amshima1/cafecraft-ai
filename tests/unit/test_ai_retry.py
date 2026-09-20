@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from ai.retry import retry
 from core.exceptions import AIServiceError, ConfigurationError, ValidationError
@@ -10,8 +10,9 @@ class RetryDecoratorTests(unittest.TestCase):
 
     def test_ai_service_error_is_retried_until_success(self):
         calls = {"count": 0}
+        delay_seconds = 0.01
 
-        @retry(max_attempts=3, delay_seconds=0)
+        @retry(max_attempts=3, delay_seconds=delay_seconds)
         def flaky():
             calls["count"] += 1
             if calls["count"] < 3:
@@ -24,11 +25,13 @@ class RetryDecoratorTests(unittest.TestCase):
         self.assertEqual(result, "success")
         self.assertEqual(calls["count"], 3)
         self.assertEqual(sleep_mock.call_count, 2)
+        sleep_mock.assert_has_calls([call(delay_seconds), call(delay_seconds)])
 
     def test_ai_service_error_stops_after_max_attempts(self):
         calls = {"count": 0}
+        delay_seconds = 0.01
 
-        @retry(max_attempts=2, delay_seconds=0)
+        @retry(max_attempts=2, delay_seconds=delay_seconds)
         def always_fails():
             calls["count"] += 1
             raise AIServiceError("still failing")
@@ -39,6 +42,7 @@ class RetryDecoratorTests(unittest.TestCase):
 
         self.assertEqual(calls["count"], 2)
         self.assertEqual(sleep_mock.call_count, 1)
+        sleep_mock.assert_called_once_with(delay_seconds)
 
     def test_validation_error_is_not_retried(self):
         calls = {"count": 0}
