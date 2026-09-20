@@ -12,7 +12,7 @@ from core.exceptions import ValidationError
 
 
 class JobPromptBuilderTests(unittest.TestCase):
-    """Verify public behavior of the job prompt builders."""
+    """Verify the public behavior of the job prompt builders."""
 
     def assert_truth_layer_instructions(self, prompt: str) -> None:
         """The prompt must require evidence-based, non-invented facts."""
@@ -160,7 +160,7 @@ class JobPromptBuilderTests(unittest.TestCase):
             "Built ETL pipelines in Python.",
         )
 
-        self.assertIn("exact ATS score", prompt.lower())
+        self.assertIn("exact ats score", prompt.lower())
         self.assertIn("No exact ATS score is predicted.", prompt)
         self.assertIn("qualitative analysis only", prompt.lower())
 
@@ -170,10 +170,14 @@ class JobPromptBuilderTests(unittest.TestCase):
             "Requires cloud certification and leadership experience.",
             "Has cloud work but no certification or leadership examples.",
         )
+        normalized_prompt = " ".join(prompt.split())
 
         self.assertIn("confirmed gaps", prompt.lower())
         self.assertIn("missing information", prompt.lower())
-        self.assertIn("explicitly shows the candidate does not meet a requirement", prompt)
+        self.assertIn(
+            "explicitly shows the candidate does not meet a requirement",
+            normalized_prompt,
+        )
 
 
 if __name__ == "__main__":
