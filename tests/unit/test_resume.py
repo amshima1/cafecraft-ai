@@ -1,60 +1,144 @@
-"""Application service for resume validation, creation, and versioning."""
+"""Unit tests for the Resume Intelligence foundation."""
 
-from __future__ import annotations
+import unittest
+from datetime import date
 
-from collections.abc import Mapping
-from typing import Any
-
-from career_profile.models import CareerProfile
+from career_profile.models import CareerProfile, WorkExperience
 from core.exceptions import ValidationError
-from core.validators import validate_required_text
+from resume_intelligence import (
+    Resume,
+    ResumeBuilder,
+    ResumeEntry,
+    ResumeParser,
+    ResumeSection,
+    ResumeService,
+    ResumeVersionManager,
+)
+from resume_intelligence.schemas import validate_resume
 
-from .builder import ResumeBuilder
-from .models import Resume, ResumeVersion
-from .parser import ResumeParser
-from .schemas import validate_resume
-from .versions import ResumeVersionManager
+
+def resume_data(**overrides):
+    data = {
+        "resume_id": "resume-1",
+        "full_name": "Ada Lovelace",
+        "email": "ada@example.com",
+        "summary": "Engineer",
+        "skills": ["Python"],
+        "sections": [
+            {
+                "name": "Experience",
+                "entries": [{"title": "Engineer", "content": "Acme"}],
+            }
+        ],
+    }
+    data.update(overrides)
+    return data
 
 
-class ResumeService:
-    """Coordinate resume validation, construction, and version management."""
+def career_profile():
+    return CareerProfile(
+        profile_id="profile-1",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        professional_summary="Verified engineer.",
+        work_experience=(
+            WorkExperience(
+                employer="Acme",
+                job_title="Engineer",
+                start_date=date(2020, 1, 1),
+                skills=("Python",),
+            ),
+        ),
+        skills=("Python",),
+    )
 
-    def __init__(self, version_manager: ResumeVersionManager | None = None) -> None:
-        self._version_manager = version_manager or ResumeVersionManager()
-        self._parser = ResumeParser()
-        self._builder = ResumeBuilder()
-        self._resumes: dict[str, Resume] = {}
 
-    def create_resume(self, data: Resume | Mapping[str, Any]) -> Resume:
-        resume = validate_resume(data)
-        self._resumes[resume.resume_id] = resume
-        return resume
+class ResumeTests(unittest.TestCase):
+    def test_valid_resume_creation(self):
+        resume = validate_resume(resume_data())
+        self.assertEqual(resume.resume_id, "resume-1")
+        self.assertEqual(resume.sections[0].entries[0].title, "Engineer")
 
-    def get_resume(self, resume_id: str) -> Resume | None:
-        return self._resumes.get(validate_required_text(resume_id, "resume_id"))
+    def test_invalid_required_fields(self):
+        for field in ("resume_id", "full_name", "email"):
+            with self.subTest(field=field):
+                with self.assertRaises(ValidationError):
+                    validate_resume(resume_data(**{field: ""}))
 
-    def build_from_career_profile(self, profile: CareerProfile) -> Resume:
-        if not isinstance(profile, CareerProfile):
-            raise ValidationError("profile must be a CareerProfile instance.")
-        resume = self._builder.build_from_profile(profile)
-        self._resumes[resume.resume_id] = resume
-        return resume
+    def test_invalid_collection_types(self):
+        with self.assertRaises(ValidationError):
+            validate_resume(resume_data(skills="Python"))
+        with self.assertRaises(ValidationError):
+            validate_resume(resume_data(sections="Experience"))
 
-    def create_version(self, resume: Resume, *, version_id: str | None = None, version_number: int | None = None) -> ResumeVersion:
-        if not isinstance(resume, Resume):
-            resume = validate_resume(resume)
-        if resume.resume_id not in self._resumes:
-            self._resumes[resume.resume_id] = resume
-        return self._version_manager.create_version(resume, version_id=version_id, version_number=version_number)
+    def test_invalid_section_and_entry_types(self):
+        with self.assertRaises(ValidationError):
+            validate_resume(resume_data(sections=["Experience"]))
+        with self.assertRaises(ValidationError):
+            validate_resume(resume_data(sections=[{"name": "Experience", "entries": ["bad"]}]))
 
-    def get_version(self, version_id: str) -> ResumeVersion | None:
-        return self._version_manager.get_version(validate_required_text(version_id, "version_id"))
+    def test_models_are_immutable(self):
+        resume = validate_resume(resume_data())
+        with self.assertRaises((AttributeError, TypeError)):
+            resume.full_name = "Changed"
+        self.assertIsInstance(resume.sections, tuple)
+        self.assertIsInstance(resume.sections[0].entries, tuple)
 
-    def get_versions(self, resume_id: str) -> tuple[ResumeVersion, ...]:
-        return self._version_manager.get_versions(validate_required_text(resume_id, "resume_id"))
+    def test_builder_preserves_career_profile_facts(self):
+        resume = ResumeBuilder().build_from_profile(career_profile())
+        self.assertEqual(resume.full_name, "Ada Lovelace")
+        self.assertEqual(resume.email, "ada@example.com")
+        self.assertEqual(resume.skills, ("Python",))
+        self.assertEqual(resume.sections[1].entries[0].content, "Acme")
 
-    def get_latest_version(self, resume_id: str) -> ResumeVersion | None:
-        return self._version_manager.get_latest_version(validate_required_text(resume_id, "resume_id"))
+    def test_builder_handles_empty_optional_sections(self):
+        profile = CareerProfile("p", "Ada", "ada@example.com")
+        resume = ResumeBuilder().build_from_profile(profile)
+        self.assertEqual(resume.sections, ())
 
-    def parse_resume(self, raw: Resume | Mapping[str, Any] | str) -> Resume:
-        return self._parser.parse(raw)
+    def test_parser_validation(self):
+        parser = ResumeParser()
+        self.assertEqual(parser.parse(resume_data()).resume_id, "resume-1")
+        with self.assertRaises(ValidationError):
+            parser.parse("")
+        with self.assertRaises(ValidationError):
+            parser.parse({"resume_id": "resume-1"})
+
+    def test_version_creation_and_numbering(self):
+        manager = ResumeVersionManager()
+        resume = validate_resume(resume_data())
+        first = manager.create_version(resume)
+        second = manager.create_version(resume)
+        self.assertEqual((first.version_number, second.version_number), (1, 2))
+        self.assertEqual(manager.get_version(first.version_id), first)
+
+    def test_previous_versions_remain_unchanged(self):
+        manager = ResumeVersionManager()
+        first_resume = validate_resume(resume_data(summary="First"))
+        second_resume = validate_resume(resume_data(summary="Second"))
+        first = manager.create_version(first_resume)
+        manager.create_version(second_resume)
+        self.assertEqual(first.snapshot.summary, "First")
+        self.assertEqual(len(manager.get_versions("resume-1")), 2)
+
+    def test_duplicate_and_invalid_versions_are_rejected(self):
+        manager = ResumeVersionManager()
+        resume = validate_resume(resume_data())
+        manager.create_version(resume, version_number=1)
+        with self.assertRaises(ValidationError):
+            manager.create_version(resume, version_number=1)
+        with self.assertRaises(ValidationError):
+            manager.create_version(resume, version_number=0)
+
+    def test_service_orchestration(self):
+        service = ResumeService()
+        resume = service.create_resume(resume_data())
+        self.assertIs(service.get_resume(resume.resume_id), resume)
+        version = service.create_version(resume)
+        self.assertIs(service.get_version(version.version_id), version)
+        built = service.build_from_career_profile(career_profile())
+        self.assertIs(service.get_resume(built.resume_id), built)
+
+
+if __name__ == "__main__":
+    unittest.main()
